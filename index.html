@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>无边框图片窗口</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            transition: background 0.5s ease;
+            overflow: hidden;
+        }
+        
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        .main-content {
+            flex: 1;
+            position: relative;
+        }
+        
+        .instructions-panel {
+            width: 400px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            overflow-y: auto;
+            box-shadow: -5px 0 15px rgba(0, 0, 0, 0.1);
+            display: none;
+        }
+        
+        .instructions-panel.active {
+            display: block;
+        }
+        
+        .toggle-instructions {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 1000;
+        }
+        
+        .workspace {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(5px);
+            overflow: hidden;
+        }
+        
+        .window {
+            position: absolute;
+            width: 500px;
+            height: 400px;
+            background: transparent;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            cursor: grab;
+            user-select: none;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            touch-action: none;
+        }
+        
+        .window.shrink {
+            width: 400px;
+            height: 300px;
+        }
+        
+        .window.bottom {
+            top: 60%;
+            z-index: 1;
+        }
+        
+        .window.top {
+            top: 40%;
+            z-index: 2;
+        }
+        
+        .window:active {
+            cursor: grabbing;
+        }
+        
+        .window.dragging {
+            transform: scale(1.02);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+            transition: none;
+        }
+        
+        .window.resizing {
+            transition: none;
+        }
+        
+        .window-content {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            cursor: move;
+            animation: windowEntrance 0.5s ease-out;
+            background: transparent;
+        }
+        
+        @keyframes windowEntrance {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        
+        .image-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+            background: transparent;
+        }
+        
+        .window-image {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: transparent;
+        }
+        
+        .empty-state {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            color: rgba(255, 255, 255, 0.7);
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+        
+        .window-controls-bar {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 25px;
+            display: flex;
+            gap: 8px;
+            backdrop-filter: blur(10px);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .window:hover .window-controls-bar {
+            opacity: 1;
+        }
+        
+        .file-input {
+            display: none;
+        }
+        
+        .control-btn-small {
+            padding: 8px 16px;
+            background: rgba(74, 110, 224, 0.8);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .control-btn-small:hover {
+            background: rgba(74, 110, 224, 1);
+            transform: translateY(-2px);
+        }
+        
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 24px;
+            height: 24px;
+            background: rgba(255, 95, 87, 0.8);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            opacity: 0;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .window:hover .close-btn {
+            opacity: 1;
+        }
+        
+        .close-btn:hover {
+            background: rgba(255, 95, 87, 1);
+            transform: scale(1.1);
+        }
+        
+        .resize-handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 2px;
+            z-index: 10;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .window:hover .resize-handle {
+            opacity: 1;
+        }
+        
+        .resize-handle.bottom-right {
+            bottom: 2px;
+            right: 2px;
+            cursor: nwse-resize;
+        }
+        
+        .resize-handle.bottom-left {
+            bottom: 2px;
+            left: 2px;
+            cursor: nesw-resize;
+        }
+        
+        .resize-handle.top-right {
+            top: 2px;
+            right: 2px;
+            cursor: nesw-resize;
+        }
+        
+        .resize-handle.top-left {
+            top: 2px;
+            left: 2px;
+            cursor: nwse-resize;
+        }
+        
+        .clone {
+            opacity: 0.6;
+            transform: scale(0.9);
+            z-index: 50;
+        }
+        
+        .counter {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            z-index: 1000;
+        }
+        
+        .hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            z-index: 1000;
+        }
+        
+        .control-panel {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            background: #4a6ee0;
+            color: white;
+            cursor: pointer;
+            transition: background 0.3s;
+            font-size: 12px;
+        }
+        
+        .btn:hover {
+            background: #3a5ec0;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        .background-controls {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+        
+        .background-options {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        
+        .bg-option {
+            width: 40px;
+            height: 40px;
+            border-radius: 5px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+        
+        .bg-option:hover {
+            border: 2px solid white;
+            transform: scale(1.1);
+        }
+        
+        .bg-option.active {
+            border: 2px solid white;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+        
+        .custom-bg-input {
+            width: 100%;
+            padding: 8px;
+            margin-top: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .custom-bg-btn {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            background: #4a6ee0;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        /* 说明页面样式 */
+        .instructions-content h2 {
+            color: #4a6ee0;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #4a6ee0;
+            padding-bottom: 10px;
+        }
+        
+        .instructions-content h3 {
+            color: #4a6ee0;
+            margin: 20px 0 10px 0;
+        }
+        
+        .instructions-content p {
+            margin-bottom: 15px;
+            line-height: 1.6;
+            color: #333;
+        }
+        
+        .instructions-content ul {
+            margin-bottom: 15px;
+            padding-left: 20px;
+        }
+        
+        .instructions-content li {
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+        
+        .feature-list {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="main-content">
+            <button class="toggle-instructions" id="toggle-instructions">显示说明</button>
+            
+            <div class="workspace" id="workspace">
+                <div class="counter">状态: <span id="status">未分离</span></div>
+                <div class="hint">拖动窗口分离 | 拖拽角落调整大小 | 悬停显示控制按钮</div>
+                
+                <div class="window" id="main-window">
+                    <div class="window-content">
+                        <div class="image-container">
+                            <div class="empty-state">
+                                <i>📷</i>
+                                <p>拖动添加图片或点击下方按钮</p>
+                            </div>
+                        </div>
+                        <div class="window-controls-bar">
+                            <input type="file" id="image-upload" class="file-input" accept="image/*">
+                            <button class="control-btn-small" onclick="document.getElementById('image-upload').click()">添加图片</button>
+                            <button class="control-btn-small" id="add-sample-image-btn">示例图片</button>
+                        </div>
+                        <button class="close-btn" id="main-close">×</button>
+                    </div>
+                    <div class="resize-handle bottom-right"></div>
+                    <div class="resize-handle bottom-left"></div>
+                    <div class="resize-handle top-right"></div>
+                    <div class="resize-handle top-left"></div>
+                </div>
+            </div>
+            
+            <div class="control-panel">
+                <button class="btn" id="reset-btn">重置窗口</button>
+                <button class="btn btn-secondary" id="custom-bg-btn">自定义背景</button>
+            </div>
+        </div>
+        
+        <div class="instructions-panel" id="instructions-panel">
+            <div class="instructions-content">
+                <h2>无边框图片窗口 - 使用说明</h2>
+                
+                <div class="feature-list">
+                    <h3>主要功能</h3>
+                    <ul>
+                        <li><strong>无边框设计</strong> - 纯净的图片展示体验</li>
+                        <li><strong>精准拖动</strong> - 鼠标位置与窗口位置完全同步</li>
+                        <li><strong>窗口缩放</strong> - 拖拽窗口角落调整大小</li>
+                        <li><strong>窗口分离</strong> - 拖动原窗口可分离出新窗口</li>
+                        <li><strong>双窗口支持</strong> - 原窗口和新窗口都能添加图片</li>
+                        <li><strong>悬停控制</strong> - 鼠标悬停显示控制按钮</li>
+                    </ul>
+                </div>
+                
+                <h3>操作指南</h3>
+                <p><strong>拖动窗口</strong>：按住图片任意位置进行精准拖动</p>
+                <p><strong>边界限制</strong>：窗口会自动限制在页面范围内</p>
+                <p><strong>调整大小</strong>：拖拽窗口四个角落的调整点</p>
+                <p><strong>分离窗口</strong>：将原窗口拖动一定距离后释放，会生成新窗口</p>
+                <p><strong>关闭窗口</strong>：鼠标悬停后点击右上角×按钮关闭新窗口</p>
+                <p><strong>添加图片</strong>：鼠标悬停后点击下方"添加图片"按钮选择本地图片</p>
+                <p><strong>示例图片</strong>：点击"示例图片"按钮添加预置图片</p>
+                
+                <h3>背景设置</h3>
+                <p>使用预置背景或自定义背景图片URL：</p>
+                <div class="background-controls">
+                    <div class="background-options">
+                        <div class="bg-option active" style="background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);" data-bg="gradient1"></div>
+                        <div class="bg-option" style="background: linear-gradient(135deg, #667eea, #764ba2);" data-bg="gradient2"></div>
+                        <div class="bg-option" style="background: linear-gradient(135deg, #4facfe, #00f2fe);" data-bg="gradient3"></div>
+                        <div class="bg-option" style="background: #2c3e50;" data-bg="solid1"></div>
+                        <div class="bg-option" style="background: #34495e;" data-bg="solid2"></div>
+                    </div>
+                    <input type="text" class="custom-bg-input" id="custom-bg-input" placeholder="输入图片URL或选择颜色">
+                    <button class="custom-bg-btn" id="apply-custom-bg">应用自定义背景</button>
+                </div>
+                
+                <h3>技术特性</h3>
+                <ul>
+                    <li>纯HTML5、CSS3和JavaScript实现</li>
+                    <li>无边框透明窗口设计</li>
+                    <li>精准的拖拽定位，无偏移</li>
+                    <li>边界碰撞检测和限制</li>
+                    <li>本地文件读取API支持</li>
+                </ul>
+                
+                <p style="margin-top: 30px; text-align: center; color: #666;">
+                    现在返回主界面开始体验纯净的图片展示吧！
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const workspace = document.getElementById('workspace');
+            const mainWindow = document.getElementById('main-window');
+            const statusElement = document.getElementById('status');
+            const resetBtn = document.getElementById('reset-btn');
+            const addSampleImageBtn = document.getElementById('add-sample-image-btn');
+            const imageUpload = document.getElementById('image-upload');
+            const toggleInstructionsBtn = document.getElementById('toggle-instructions');
+            const instructionsPanel = document.getElementById('instructions-panel');
+            const customBgBtn = document.getElementById('custom-bg-btn');
+            const customBgInput = document.getElementById('custom-bg-input');
+            const applyCustomBg = document.getElementById('apply-custom-bg');
+            const bgOptions = document.querySelectorAll('.bg-option');
+            
+            let activeWindow = null;
+            let startX = 0, startY = 0;
+            let initialLeft = 0, initialTop = 0;
+            let cloneWindow = null;
+            let hasSeparated = false;
+            let isResizing = false;
+            let resizeDirection = null;
+            let startSize = { width: 0, height: 0 };
+            let startPos = { x: 0, y: 0 };
+
+            // 边界限制函数
+            function constrainToBounds(x, y, width, height) {
+                const workspaceRect = workspace.getBoundingClientRect();
+                const maxX = workspaceRect.width - width;
+                const maxY = workspaceRect.height - height;
+                
+                return {
+                    x: Math.max(0, Math.min(x, maxX)),
+                    y: Math.max(0, Math.min(y, maxY))
+                };
+            }
+
+            // 获取窗口的实际位置（考虑transform）
+            function getWindowPosition(windowElement) {
+                const rect = windowElement.getBoundingClientRect();
+                const workspaceRect = workspace.getBoundingClientRect();
+                return {
+                    left: rect.left - workspaceRect.left,
+                    top: rect.top - workspaceRect.top
+                };
+            }
+
+            // 为窗口添加拖拽功能
+            function addDragFunctionality(windowElement) {
+                windowElement.addEventListener('mousedown', function(e) {
+                    // 排除控制按钮和调整点的点击
+                    if (e.target.classList.contains('control-btn-small') || 
+                        e.target.classList.contains('close-btn') ||
+                        e.target.classList.contains('resize-handle')) {
+                        return;
+                    }
+                    
+                    // 窗口任何位置都可以触发拖拽
+                    activeWindow = windowElement;
+                    
+                    // 保存初始位置 - 使用getBoundingClientRect获取准确位置
+                    const windowPos = getWindowPosition(windowElement);
+                    initialLeft = windowPos.left;
+                    initialTop = windowPos.top;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    
+                    // 添加拖拽样式
+                    windowElement.classList.add('dragging');
+                    windowElement.style.zIndex = 1000;
+                    
+                    // 如果是原窗口且未分离，创建克隆窗口
+                    if (windowElement === mainWindow && !hasSeparated) {
+                        cloneWindow = mainWindow.cloneNode(true);
+                        cloneWindow.classList.add('clone');
+                        const clonePos = getWindowPosition(mainWindow);
+                        cloneWindow.style.left = clonePos.left + 'px';
+                        cloneWindow.style.top = clonePos.top + 'px';
+                        workspace.appendChild(cloneWindow);
+                        
+                        // 为新窗口添加功能
+                        addWindowFunctionality(cloneWindow);
+                    }
+                    
+                    e.preventDefault();
+                });
+            }
+
+            // 添加调整大小功能
+            function addResizeFunctionality(windowElement) {
+                const resizeHandles = windowElement.querySelectorAll('.resize-handle');
+                
+                resizeHandles.forEach(handle => {
+                    handle.addEventListener('mousedown', function(e) {
+                        isResizing = true;
+                        resizeDirection = handle.classList[1]; // bottom-right, top-left, etc.
+                        activeWindow = windowElement;
+                        
+                        const rect = windowElement.getBoundingClientRect();
+                        startSize.width = rect.width;
+                        startSize.height = rect.height;
+                        startPos.x = e.clientX;
+                        startPos.y = e.clientY;
+                        
+                        windowElement.classList.add('resizing');
+                        windowElement.style.zIndex = 1000;
+                        
+                        e.preventDefault();
+                        e.stopPropagation();
+                    });
+                });
+            }
+
+            // 添加图片到窗口
+            function addImageToWindow(windowElement, imageSrc) {
+                const imageContainer = windowElement.querySelector('.image-container');
+                
+                // 创建图片元素
+                const img = document.createElement('img');
+                img.src = imageSrc;
+                img.className = 'window-image';
+                img.alt = '窗口图片';
+                
+                // 替换图片容器内容
+                imageContainer.innerHTML = '';
+                imageContainer.appendChild(img);
+            }
+
+            // 初始化主窗口功能
+            addDragFunctionality(mainWindow);
+            addResizeFunctionality(mainWindow);
+
+            document.addEventListener('mousemove', function(e) {
+                if (isResizing && activeWindow) {
+                    const deltaX = e.clientX - startPos.x;
+                    const deltaY = e.clientY - startPos.y;
+                    
+                    let newWidth = startSize.width;
+                    let newHeight = startSize.height;
+                    let newLeft = parseFloat(activeWindow.style.left) || initialLeft;
+                    let newTop = parseFloat(activeWindow.style.top) || initialTop;
+                    
+                    switch(resizeDirection) {
+                        case 'bottom-right':
+                            newWidth = Math.max(300, startSize.width + deltaX);
+                            newHeight = Math.max(200, startSize.height + deltaY);
+                            break;
+                        case 'bottom-left':
+                            newWidth = Math.max(300, startSize.width - deltaX);
+                            newHeight = Math.max(200, startSize.height + deltaY);
+                            newLeft = initialLeft + deltaX;
+                            break;
+                        case 'top-right':
+                            newWidth = Math.max(300, startSize.width + deltaX);
+                            newHeight = Math.max(200, startSize.height - deltaY);
+                            newTop = initialTop + deltaY;
+                            break;
+                        case 'top-left':
+                            newWidth = Math.max(300, startSize.width - deltaX);
+                            newHeight = Math.max(200, startSize.height - deltaY);
+                            newLeft = initialLeft + deltaX;
+                            newTop = initialTop + deltaY;
+                            break;
+                    }
+                    
+                    // 应用边界限制
+                    const constrainedPos = constrainToBounds(newLeft, newTop, newWidth, newHeight);
+                    
+                    activeWindow.style.width = newWidth + 'px';
+                    activeWindow.style.height = newHeight + 'px';
+                    activeWindow.style.left = constrainedPos.x + 'px';
+                    activeWindow.style.top = constrainedPos.y + 'px';
+                    
+                } else if (activeWindow && !isResizing) {
+                    // 计算位移
+                    const deltaX = e.clientX - startX;
+                    const deltaY = e.clientY - startY;
+                    
+                    // 计算新位置
+                    const newX = initialLeft + deltaX;
+                    const newY = initialTop + deltaY;
+                    
+                    // 应用边界限制
+                    const rect = activeWindow.getBoundingClientRect();
+                    const constrainedPos = constrainToBounds(newX, newY, rect.width, rect.height);
+                    
+                    // 直接更新left/top位置
+                    activeWindow.style.left = constrainedPos.x + 'px';
+                    activeWindow.style.top = constrainedPos.y + 'px';
+                    
+                    // 如果是原窗口且未分离，更新克隆窗口位置
+                    if (activeWindow === mainWindow && cloneWindow && !hasSeparated) {
+                        cloneWindow.style.left = (constrainedPos.x + 20) + 'px';
+                        cloneWindow.style.top = (constrainedPos.y + 20) + 'px';
+                    }
+                }
+            });
+
+            document.addEventListener('mouseup', function() {
+                if (isResizing) {
+                    isResizing = false;
+                    resizeDirection = null;
+                    if (activeWindow) {
+                        activeWindow.classList.remove('resizing');
+                    }
+                }
+                
+                if (activeWindow && !isResizing) {
+                    // 移除拖拽样式
+                    activeWindow.classList.remove('dragging');
+                    
+                    // 设置正确的z-index
+                    if (activeWindow === mainWindow) {
+                        activeWindow.style.zIndex = hasSeparated ? '1' : 'auto';
+                    } else {
+                        activeWindow.style.zIndex = '2';
+                    }
+                    
+                    // 如果是原窗口且未分离，检查是否需要创建新窗口
+                    if (activeWindow === mainWindow && cloneWindow && !hasSeparated) {
+                        const finalPos = getWindowPosition(mainWindow);
+                        
+                        // 如果拖动距离足够，创建新窗口
+                        if (Math.abs(finalPos.left - initialLeft) > 50 || Math.abs(finalPos.top - initialTop) > 50) {
+                            // 将克隆窗口转换为实际窗口
+                            cloneWindow.classList.remove('clone');
+                            cloneWindow.classList.add('top');
+                            
+                            // 应用边界限制到新窗口
+                            const newRect = cloneWindow.getBoundingClientRect();
+                            const newPos = getWindowPosition(cloneWindow);
+                            const constrainedPos = constrainToBounds(newPos.left, newPos.top, newRect.width, newRect.height);
+                            cloneWindow.style.left = constrainedPos.x + 'px';
+                            cloneWindow.style.top = constrainedPos.y + 'px';
+                            
+                            // 原窗口缩小并移动到下方
+                            mainWindow.classList.add('shrink', 'bottom');
+                            
+                            // 更新状态
+                            hasSeparated = true;
+                            statusElement.textContent = '已分离';
+                        } else {
+                            // 移除克隆窗口
+                            workspace.removeChild(cloneWindow);
+                            cloneWindow = null;
+                        }
+                    }
+                    
+                    activeWindow = null;
+                }
+            });
+
+            // 为窗口添加完整功能
+            function addWindowFunctionality(windowElement) {
+                addDragFunctionality(windowElement);
+                addResizeFunctionality(windowElement);
+                
+                // 为控制按钮添加功能
+                const uploadBtn = windowElement.querySelector('.control-btn-small');
+                if (uploadBtn && uploadBtn.textContent === '添加图片') {
+                    uploadBtn.onclick = function() {
+                        imageUpload.click();
+                    };
+                }
+                
+                const sampleBtn = windowElement.querySelector('#add-sample-image-btn');
+                if (sampleBtn) {
+                    sampleBtn.onclick = function() {
+                        const sampleImages = [
+                            'https://images.unsplash.com/photo-1551963831-b3b1ca40c98e?w=600&h=400&fit=crop',
+                            'https://images.unsplash.com/photo-1551782450-a2132b4ba21d?w=600&h=400&fit=crop',
+                            'https://images.unsplash.com/photo-1522770179533-24471fcdba45?w=600&h=400&fit=crop'
+                        ];
+                        const randomImage = sampleImages[Math.floor(Math.random() * sampleImages.length)];
+                        addImageToWindow(windowElement, randomImage);
+                    };
+                }
+                
+                // 添加关闭按钮功能
+                const closeBtn = windowElement.querySelector('.close-btn');
+                if (closeBtn) {
+                    closeBtn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        if (windowElement !== mainWindow) {
+                            workspace.removeChild(windowElement);
+                            
+                            // 恢复原窗口
+                            mainWindow.classList.remove('shrink', 'bottom');
+                            mainWindow.style.left = '';
+                            mainWindow.style.top = '';
+                            
+                            // 更新状态
+                            hasSeparated = false;
+                            statusElement.textContent = '未分离';
+                        }
+                    });
+                }
+            }
+            
+            // 重置按钮功能
+            resetBtn.addEventListener('click', function() {
+                // 移除新窗口
+                const newWindow = document.querySelector('.window.top');
+                if (newWindow) {
+                    workspace.removeChild(newWindow);
+                }
+                
+                // 恢复原窗口
+                mainWindow.classList.remove('shrink', 'bottom', 'dragging');
+                mainWindow.style.left = '';
+                mainWindow.style.top = '';
+                mainWindow.style.width = '';
+                mainWindow.style.height = '';
+                
+                // 清空图片
+                const imageContainer = mainWindow.querySelector('.image-container');
+                imageContainer.innerHTML = `
+                    <div class="empty-state">
+                        <i>📷</i>
+                        <p>拖动添加图片或点击下方按钮</p>
+                    </div>
+                `;
+                
+                // 更新状态
+                hasSeparated = false;
+                statusElement.textContent = '未分离';
+                
+                // 重置变量
+                cloneWindow = null;
+            });
+            
+            // 添加示例图片
+            addSampleImageBtn.addEventListener('click', function() {
+                const sampleImages = [
+                    'https://images.unsplash.com/photo-1551963831-b3b1ca40c98e?w=600&h=400&fit=crop',
+                    'https://images.unsplash.com/photo-1551782450-a2132b4ba21d?w=600&h=400&fit=crop',
+                    'https://images.unsplash.com/photo-1522770179533-24471fcdba45?w=600&h=400&fit=crop'
+                ];
+                const randomImage = sampleImages[Math.floor(Math.random() * sampleImages.length)];
+                addImageToWindow(mainWindow, randomImage);
+            });
+            
+            // 本地图片上传
+            imageUpload.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        addImageToWindow(mainWindow, event.target.result);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+            
+            // 切换说明面板
+            toggleInstructionsBtn.addEventListener('click', function() {
+                instructionsPanel.classList.toggle('active');
+                this.textContent = instructionsPanel.classList.contains('active') ? '隐藏说明' : '显示说明';
+            });
+            
+            // 自定义背景
+            customBgBtn.addEventListener('click', function() {
+                const url = prompt('请输入背景图片URL或颜色值：', 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-1.2.1&auto=format&fit=crop&w=2000&q=80');
+                if (url) {
+                    if (url.startsWith('http')) {
+                        document.body.style.background = `url('${url}') center/cover`;
+                    } else {
+                        document.body.style.background = url;
+                    }
+                }
+            });
+            
+            // 应用自定义背景
+            applyCustomBg.addEventListener('click', function() {
+                const url = customBgInput.value.trim();
+                if (url) {
+                    if (url.startsWith('http') || url.startsWith('#')) {
+                        if (url.startsWith('http')) {
+                            document.body.style.background = `url('${url}') center/cover`;
+                        } else {
+                            document.body.style.background = url;
+                        }
+                        customBgInput.value = '';
+                    }
+                }
+            });
+            
+            // 背景替换功能
+            bgOptions.forEach(option => {
+                option.addEventListener('click', function() {
+                    // 移除所有active类
+                    bgOptions.forEach(opt => opt.classList.remove('active'));
+                    // 添加active类到当前选项
+                    this.classList.add('active');
+                    
+                    const bgType = this.getAttribute('data-bg');
+                    
+                    switch(bgType) {
+                        case 'gradient1':
+                            document.body.style.background = 'linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d)';
+                            break;
+                        case 'gradient2':
+                            document.body.style.background = 'linear-gradient(135deg, #667eea, #764ba2)';
+                            break;
+                        case 'gradient3':
+                            document.body.style.background = 'linear-gradient(135deg, #4facfe, #00f2fe)';
+                            break;
+                        case 'solid1':
+                            document.body.style.background = '#2c3e50';
+                            break;
+                        case 'solid2':
+                            document.body.style.background = '#34495e';
+                            break;
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
